@@ -1,13 +1,29 @@
 import React, {useState, useEffect} from 'react';
-import {View, Text, Button, Linking, StyleSheet, Alert, AppState, NativeModules} from 'react-native';
+import {
+  View,
+  Text,
+  Button,
+  Linking,
+  StyleSheet,
+  Alert,
+  AppState,
+  NativeModules,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+  Dimensions,
+} from 'react-native';
+import {WebView} from 'react-native-webview';
 
 const {SharedText} = NativeModules;
+const {height} = Dimensions.get('window');
 
 function App(): React.JSX.Element {
   const [sharedLink, setSharedLink] = useState<string>('');
   const [linkHistory, setLinkHistory] = useState<string[]>([]);
+  const [showWebView, setShowWebView] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
-  // Check for shared text when app starts or comes to foreground
   useEffect(() => {
     const checkForSharedText = async () => {
       try {
@@ -22,10 +38,8 @@ function App(): React.JSX.Element {
       }
     };
 
-    // Check immediately
     checkForSharedText();
 
-    // Check when app comes to foreground
     const appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
       if (nextAppState === 'active') {
         checkForSharedText();
@@ -37,7 +51,6 @@ function App(): React.JSX.Element {
     };
   }, []);
 
-  // Handle deep links (whatsappclone://)
   useEffect(() => {
     const handleDeepLink = async () => {
       try {
@@ -66,7 +79,6 @@ function App(): React.JSX.Element {
     
     let processedLink = url;
 
-    // Handle different URL types
     if (url.startsWith('whatsappclone://chat/')) {
       const phone = url.replace('whatsappclone://chat/', '');
       processedLink = `Chat with: ${phone}`;
@@ -74,6 +86,11 @@ function App(): React.JSX.Element {
 
     setSharedLink(processedLink);
     addToHistory(processedLink);
+    
+    // Auto-load if it's a valid URL
+    if (isValidUrl(processedLink)) {
+      setShowWebView(true);
+    }
     
     Alert.alert(
       'Link Received!', 
@@ -86,6 +103,13 @@ function App(): React.JSX.Element {
     if (link && !linkHistory.includes(link)) {
       setLinkHistory(prev => [link, ...prev].slice(0, 10));
     }
+  };
+
+  const isValidUrl = (url: string): boolean => {
+    return url.includes('http') || url.includes('www.') || 
+           url.includes('.com') || url.includes('.org') || 
+           url.includes('.net') || url.includes('amazon') ||
+           url.includes('youtube');
   };
 
   const getDomain = (url: string): string => {
@@ -103,27 +127,33 @@ function App(): React.JSX.Element {
 
   const clearLink = () => {
     setSharedLink('');
+    setShowWebView(false);
   };
 
-  const openLink = async () => {
+  const loadInApp = () => {
+    if (!sharedLink) return;
+
+    if (isValidUrl(sharedLink)) {
+      setShowWebView(true);
+    } else {
+      Alert.alert('Error', 'Not a valid URL to load');
+    }
+  };
+
+  const openInBrowser = async () => {
     if (!sharedLink) return;
 
     try {
-      // For regular URLs, open in browser
-      if (sharedLink.includes('http') || sharedLink.includes('.')) {
-        let urlToOpen = sharedLink;
-        if (!urlToOpen.startsWith('http')) {
-          urlToOpen = 'https://' + urlToOpen;
-        }
-        
-        const supported = await Linking.canOpenURL(urlToOpen);
-        if (supported) {
-          await Linking.openURL(urlToOpen);
-        } else {
-          Alert.alert('Error', 'Cannot open this URL');
-        }
+      let urlToOpen = sharedLink;
+      if (!urlToOpen.startsWith('http')) {
+        urlToOpen = 'https://' + urlToOpen;
+      }
+      
+      const supported = await Linking.canOpenURL(urlToOpen);
+      if (supported) {
+        await Linking.openURL(urlToOpen);
       } else {
-        Alert.alert('Info', `This is: ${sharedLink}`);
+        Alert.alert('Error', 'Cannot open this URL');
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to open URL');
@@ -132,19 +162,27 @@ function App(): React.JSX.Element {
 
   const testShareFunctionality = () => {
     const testLinks = [
-      'https://amazon.com/dp/PRODUCT123',
-      'https://youtube.com/watch?v=VIDEO_ID',
-      'whatsappclone://chat/+1234567890',
-      'Shared text content'
+      'https://www.amazon.com/dp/PRODUCT123',
+      'https://www.youtube.com/watch?v=VIDEO_ID',
+      'https://www.google.com',
+      'https://github.com',
     ];
     
     const randomLink = testLinks[Math.floor(Math.random() * testLinks.length)];
     setSharedLink(randomLink);
     addToHistory(randomLink);
+    setShowWebView(true);
+  };
+
+  const getValidUrl = (url: string): string => {
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+    return 'https://' + url;
   };
 
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles.container}>
       <Text style={styles.title}>🔗 Link Receiver</Text>
       <Text style={styles.subtitle}>Share any content to this app!</Text>
 
@@ -158,19 +196,67 @@ function App(): React.JSX.Element {
         </View>
 
         {sharedLink ? (
-          <View style={styles.buttonRow}>
-            <Button 
-              title="📱 Open" 
-              onPress={openLink} 
-            />
-            <Button 
-              title="🗑️ Clear" 
-              onPress={clearLink} 
-              color="#FF3B30"
-            />
+          <View style={styles.buttonColumn}>
+            <TouchableOpacity style={styles.primaryButton} onPress={loadInApp}>
+              <Text style={styles.primaryButtonText}>📱 Load in App</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity style={styles.secondaryButton} onPress={openInBrowser}>
+              <Text style={styles.secondaryButtonText}>🌐 Open in Browser</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity style={styles.clearButton} onPress={clearLink}>
+              <Text style={styles.clearButtonText}>🗑️ Clear</Text>
+            </TouchableOpacity>
           </View>
         ) : null}
       </View>
+
+      {/* WebView Section - Shows in Same Screen */}
+      {showWebView && isValidUrl(sharedLink) && (
+        <View style={styles.webViewSection}>
+          <View style={styles.webViewHeader}>
+            <View style={styles.webViewTitleContainer}>
+              <Text style={styles.webViewDomain}>{getDomain(sharedLink)}</Text>
+              <Text style={styles.webViewUrl} numberOfLines={1}>
+                {sharedLink}
+              </Text>
+            </View>
+            <View style={styles.webViewActions}>
+              <TouchableOpacity 
+                onPress={openInBrowser} 
+                style={styles.actionButton}
+              >
+                <Text style={styles.actionButtonText}>Open ↗</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                onPress={() => setShowWebView(false)} 
+                style={[styles.actionButton, styles.closeButton]}
+              >
+                <Text style={styles.actionButtonText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.webViewWrapper}>
+            {isLoading && (
+              <View style={styles.loadingOverlay}>
+                <ActivityIndicator size="large" color="#007AFF" />
+                <Text style={styles.loadingText}>Loading...</Text>
+              </View>
+            )}
+            <WebView
+              source={{uri: getValidUrl(sharedLink)}}
+              style={styles.webView}
+              onLoadStart={() => setIsLoading(true)}
+              onLoadEnd={() => setIsLoading(false)}
+              startInLoadingState={true}
+              javaScriptEnabled={true}
+              domStorageEnabled={true}
+            />
+          </View>
+        </View>
+      )}
 
       {/* Test Section */}
       <View style={styles.testSection}>
@@ -178,15 +264,8 @@ function App(): React.JSX.Element {
         
         <View style={styles.buttonContainer}>
           <Button 
-            title="🧪 Test with Sample Content" 
+            title="🧪 Test with Sample Link" 
             onPress={testShareFunctionality} 
-          />
-        </View>
-
-        <View style={styles.buttonContainer}>
-          <Button 
-            title="💬 Test Deep Link" 
-            onPress={() => Linking.openURL('whatsappclone://chat/+1234567890')} 
           />
         </View>
       </View>
@@ -195,10 +274,21 @@ function App(): React.JSX.Element {
       {linkHistory.length > 0 && (
         <View style={styles.historySection}>
           <Text style={styles.sectionTitle}>Recent Shares:</Text>
-          {linkHistory.slice(0, 3).map((link, index) => (
-            <Text key={index} style={styles.historyItem} numberOfLines={1}>
-              • {getDomain(link)}: {link.length > 30 ? link.substring(0, 30) + '...' : link}
-            </Text>
+          {linkHistory.slice(0, 5).map((link, index) => (
+            <TouchableOpacity 
+              key={index} 
+              onPress={() => {
+                setSharedLink(link);
+                if (isValidUrl(link)) {
+                  setShowWebView(true);
+                }
+              }}
+              style={styles.historyItemContainer}
+            >
+              <Text style={styles.historyItem} numberOfLines={1}>
+                • {getDomain(link)}: {link.length > 40 ? link.substring(0, 40) + '...' : link}
+              </Text>
+            </TouchableOpacity>
           ))}
         </View>
       )}
@@ -209,13 +299,9 @@ function App(): React.JSX.Element {
         <Text style={styles.instruction}>1. Open Chrome, Amazon, YouTube, etc.</Text>
         <Text style={styles.instruction}>2. Tap "Share" button</Text>
         <Text style={styles.instruction}>3. Select "DeepLinkApp" from the list</Text>
-        <Text style={styles.instruction}>4. Content will appear here automatically!</Text>
-        
-        <Text style={styles.note}>
-          💡 Or test with: adb shell am start -a android.intent.action.SEND -t text/plain -e android.intent.extra.TEXT "https://amazon.com/product" com.deeplinkapp
-        </Text>
+        <Text style={styles.instruction}>4. Link will load automatically below!</Text>
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -230,6 +316,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     textAlign: 'center',
     marginBottom: 5,
+    marginTop: 20,
     color: '#007AFF',
   },
   subtitle: {
@@ -280,19 +367,54 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     textAlign: 'center',
   },
-  buttonRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  buttonColumn: {
     marginTop: 15,
     gap: 10,
+  },
+  primaryButton: {
+    backgroundColor: '#007AFF',
+    padding: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  primaryButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  secondaryButton: {
+    backgroundColor: '#34C759',
+    padding: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  secondaryButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  clearButton: {
+    backgroundColor: '#FF3B30',
+    padding: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  clearButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   buttonContainer: {
     marginVertical: 5,
   },
+  historyItemContainer: {
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
   historyItem: {
     fontSize: 12,
-    color: '#666',
-    marginBottom: 5,
+    color: '#007AFF',
   },
   instructions: {
     backgroundColor: '#E3F2FD',
@@ -300,6 +422,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderLeftWidth: 4,
     borderLeftColor: '#2196F3',
+    marginBottom: 30,
   },
   instructionsTitle: {
     fontSize: 14,
@@ -312,11 +435,74 @@ const styles = StyleSheet.create({
     color: '#1976D2',
     marginBottom: 5,
   },
-  note: {
+  // WebView Section Styles (In Same Screen)
+  webViewSection: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    marginBottom: 20,
+    elevation: 3,
+    overflow: 'hidden',
+  },
+  webViewHeader: {
+    backgroundColor: '#007AFF',
+    padding: 15,
+  },
+  webViewTitleContainer: {
+    marginBottom: 10,
+  },
+  webViewDomain: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 5,
+  },
+  webViewUrl: {
+    color: '#E3F2FF',
     fontSize: 11,
-    color: '#1976D2',
-    fontStyle: 'italic',
+  },
+  webViewActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  actionButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  closeButton: {
+    backgroundColor: 'rgba(255, 59, 48, 0.8)',
+    borderColor: 'rgba(255, 59, 48, 0.5)',
+  },
+  actionButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  webViewWrapper: {
+    height: height * 0.6, // 60% of screen height
+    position: 'relative',
+  },
+  webView: {
+    flex: 1,
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    zIndex: 10,
+  },
+  loadingText: {
     marginTop: 10,
+    fontSize: 14,
+    color: '#666',
   },
 });
 
